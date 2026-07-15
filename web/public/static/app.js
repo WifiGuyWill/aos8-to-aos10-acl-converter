@@ -217,22 +217,61 @@ function renderNamedDestinations(data) {
       ? `<pre class="block">${esc(JSON.stringify({ named_destinations: objs }, null, 2))}</pre>`
       : "";
   }
-  // Side-by-side / text mode: a summary card per netdestination.
+  // Side-by-side / text mode: a rich card per netdestination.
   const cards = data.netdestinations.map((nd) => {
+    // Entry counts summary line.
+    const countParts = [];
+    if (nd.fqdns.length)    countParts.push(`${nd.fqdns.length} FQDN${nd.fqdns.length !== 1 ? "s" : ""}`);
+    if (nd.hosts.length)    countParts.push(`${nd.hosts.length} host${nd.hosts.length !== 1 ? "s" : ""}`);
+    if (nd.networks.length) countParts.push(`${nd.networks.length} network${nd.networks.length !== 1 ? "s" : ""}`);
+    const summary = countParts.join(" · ") || "empty";
+
+    // Pills: address family, entry count, warnings.
+    const afLabel = nd.mixed_af ? "IPv4 + IPv6 (mixed!)" : (nd.is_ipv6 ? "IPv6" : "IPv4");
+    const afPillCls = nd.mixed_af ? "err" : "role";
+    const pills = [
+      `<span class="pill">named-destination</span>`,
+      `<span class="pill ${afPillCls}">${afLabel}</span>`,
+      `<span class="pill">${esc(summary)}</span>`,
+      `<span class="pill warn">create in Central first</span>`,
+    ];
+    if (nd.mixed_af) {
+      pills.push(`<span class="pill err">split required → ${esc(nd.name)}-v4 / ${esc(nd.name)}-v6</span>`);
+    }
+
+    // Side-by-side rows: AOS8 keyword → AOS10 keyword.
     const entries = [];
-    for (const f of nd.fqdns)    entries.push(`<tr><td class="aos8">name ${esc(f)}</td><td class="arrow">→</td><td class="aos10">fqdn ${esc(f)}</td></tr>`);
-    for (const h of nd.hosts)    entries.push(`<tr><td class="aos8">host ${esc(h)}</td><td class="arrow">→</td><td class="aos10">host ${esc(h)}</td></tr>`);
-    for (const n of nd.networks) entries.push(`<tr><td class="aos8">network ${esc(n)}</td><td class="arrow">→</td><td class="aos10">network ${esc(n)}</td></tr>`);
+    for (const f of nd.fqdns) {
+      entries.push(`<tr><td class="aos8">name ${esc(f)}</td><td class="arrow">→</td><td class="aos10">fqdn ${esc(f)}</td></tr>`);
+    }
+    for (const h of nd.hosts) {
+      const isV6 = h.includes(":");
+      const destName = nd.mixed_af ? esc(nd.name) + (isV6 ? "-v6" : "-v4") : esc(nd.name);
+      entries.push(`<tr><td class="aos8">host ${esc(h)}</td><td class="arrow">→</td><td class="aos10">host ${esc(h)}<span class="note"> (in ${destName})</span></td></tr>`);
+    }
+    for (const n of nd.networks) {
+      const isV6 = n.includes(":");
+      const destName = nd.mixed_af ? esc(nd.name) + (isV6 ? "-v6" : "-v4") : esc(nd.name);
+      entries.push(`<tr><td class="aos8">network ${esc(n)}</td><td class="arrow">→</td><td class="aos10">network ${esc(n)}<span class="note"> (in ${destName})</span></td></tr>`);
+    }
+
     const table = entries.length
       ? `<table class="sxs">
            <thead><tr><th>AOS 8 (netdestination)</th><th></th><th>AOS 10 (named-destination)</th></tr></thead>
            <tbody>${entries.join("")}</tbody>
          </table>`
       : `<p class="muted" style="padding:8px 12px">No entries (header only)</p>`;
+
+    const mixedWarning = nd.mixed_af
+      ? `<ul class="issues"><li class="err">Central named-destinations are single address-family (IPv4 OR IPv6).
+           This block has both — split into <strong>${esc(nd.name)}-v4</strong> and <strong>${esc(nd.name)}-v6</strong>
+           and update any policy rules that reference <code>alias:${esc(nd.name)}</code>.</li></ul>`
+      : "";
+
     return `<div class="result-policy">
-      <h3>${esc(nd.name)} <span class="pill">named-destination</span>
-        <span class="pill warn">create in Central first</span></h3>
+      <h3>${esc(nd.name)} ${pills.join(" ")}</h3>
       ${table}
+      ${mixedWarning}
     </div>`;
   });
   return cards.join("\n");
@@ -255,6 +294,17 @@ function renderReport(data) {
   const issues = [];
   if (s.unresolved_policies && s.unresolved_policies.length) {
     issues.push(`<li class="err">Unresolved policies (fail-closed to deny): <strong>${s.unresolved_policies.join(", ")}</strong></li>`);
+  }
+  // Named-destination summary: counts and mixed-AF warnings.
+  const nds = data.netdestinations || [];
+  if (nds.length) {
+    const mixedNds = nds.filter((n) => n.mixed_af);
+    issues.push(`<li class="info">${nds.length} named-destination${nds.length !== 1 ? "s" : ""}: `
+      + nds.map((n) => `<strong>${esc(n.name)}</strong> (${n.entry_count} entries)`).join(", ")
+      + `</li>`);
+    for (const n of mixedNds) {
+      issues.push(`<li class="err"><strong>${esc(n.name)}</strong> mixes IPv4 and IPv6 — Central requires a separate named-destination per address family. Split into <strong>${esc(n.name)}-v4</strong> and <strong>${esc(n.name)}-v6</strong>.</li>`);
+    }
   }
   if (s.roles_seen && s.roles_seen.length) {
     issues.push(`<li class="info">Roles seen: ${s.roles_seen.map(esc).join(", ")}</li>`);

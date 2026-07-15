@@ -179,12 +179,29 @@ def render_rule_summary(rules: List[Dict[str, Any]]) -> List[str]:
 # ----------------------------------------------------------------------
 
 
+def _nd_entry_summary(nd: Any) -> str:
+    """Compact entry count string, e.g. '9 FQDNs · 2 hosts · 1 network'."""
+    parts = []
+    if nd.fqdns:
+        parts.append("{0} FQDN{1}".format(len(nd.fqdns), "s" if len(nd.fqdns) != 1 else ""))
+    if nd.hosts:
+        parts.append("{0} host{1}".format(len(nd.hosts), "s" if len(nd.hosts) != 1 else ""))
+    if nd.networks:
+        parts.append("{0} network{1}".format(len(nd.networks), "s" if len(nd.networks) != 1 else ""))
+    return " · ".join(parts) if parts else "empty"
+
+
 def render_netdestinations(netdest_objects: list) -> str:
     """Render AOS 8 netdestination blocks as AOS 10 named-destination equivalents.
 
     AOS 8 ``netdestination`` objects map to Central *named-destination* objects,
     which are referenced in policy rules via ``alias:<name>``. These must be
     created in Central before the policies that reference them are applied.
+
+    Central named-destinations must be single address-family (IPv4 OR IPv6).
+    When a netdestination mixes both, the renderer splits it into two objects
+    (``<name>-v4`` and ``<name>-v6``) and adds a WARNING comment so the operator
+    knows to update the policy rule references to use the split names.
     """
     if not netdest_objects:
         return ""
@@ -194,17 +211,73 @@ def render_netdestinations(netdest_objects: list) -> str:
         "! the policies below that reference them via alias:<name>).",
         "! ==========================================================",
     ]
-    for nd in netdest_objects:
-        v6_tag = "6" if nd.is_ipv6 else ""
-        lines.append("named-destination{0} {1}".format(v6_tag, nd.name))
-        for fqdn in nd.fqdns:
+
+    def _write_nd(name: str, v6_tag: str, fqdns: list, hosts: list, networks: list,
+                  summary: str) -> None:
+        lines.append("! entries: {0}".format(summary))
+        lines.append("named-destination{0} {1}".format(v6_tag, name))
+        for fqdn in fqdns:
             lines.append("  fqdn {0}".format(fqdn))
-        for host in nd.hosts:
+        for host in hosts:
             lines.append("  host {0}".format(host))
-        for net in nd.networks:
+        for net in networks:
             lines.append("  network {0}".format(net))
         lines.append("!")
+
+    for nd in netdest_objects:
+        if nd.mixed_af:
+            # Central cannot mix IPv4 and IPv6 — split into two named-destinations.
+            v4_hosts = [h for h in nd.hosts if not _is_ipv6_addr(h)]
+            v6_hosts = [h for h in nd.hosts if _is_ipv6_addr(h)]
+            v4_nets  = [n for n in nd.networks if not _is_ipv6_addr(n.split()[0])]
+            v6_nets  = [n for n in nd.networks if _is_ipv6_addr(n.split()[0])]
+
+            lines.append(
+                "! WARNING: '{0}' mixes IPv4 and IPv6 — split into two named-destinations below.".format(nd.name)
+            )
+            lines.append(
+                "!          Update any policy rules that reference alias:{0} to use the split names.".format(nd.name)
+            )
+            if v4_hosts or v4_nets or nd.fqdns:
+                _write_nd(
+                    nd.name + "-v4", "",
+                    nd.fqdns, v4_hosts, v4_nets,
+                    _nd_entry_summary_parts(nd.fqdns, v4_hosts, v4_nets),
+                )
+            if v6_hosts or v6_nets:
+                _write_nd(
+                    nd.name + "-v6", "6",
+                    [], v6_hosts, v6_nets,
+                    _nd_entry_summary_parts([], v6_hosts, v6_nets),
+                )
+        else:
+            v6_tag = "6" if nd.is_ipv6 else ""
+            _write_nd(nd.name, v6_tag, nd.fqdns, nd.hosts, nd.networks,
+                      _nd_entry_summary(nd))
+
     return "\n".join(lines)
+
+
+def _nd_entry_summary_parts(fqdns: list, hosts: list, networks: list) -> str:
+    """Like _nd_entry_summary but for arbitrary lists (used by split rendering)."""
+    parts = []
+    if fqdns:
+        parts.append("{0} FQDN{1}".format(len(fqdns), "s" if len(fqdns) != 1 else ""))
+    if hosts:
+        parts.append("{0} host{1}".format(len(hosts), "s" if len(hosts) != 1 else ""))
+    if networks:
+        parts.append("{0} network{1}".format(len(networks), "s" if len(networks) != 1 else ""))
+    return " · ".join(parts) if parts else "empty"
+
+
+def _is_ipv6_addr(addr: str) -> bool:
+    """Return True if ``addr`` is an IPv6 address."""
+    try:
+        import ipaddress
+        ipaddress.IPv6Address(addr)
+        return True
+    except ValueError:
+        return False
 
 
 def render_central_config(policy: CanonicalPolicy) -> str:

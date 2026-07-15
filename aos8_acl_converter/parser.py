@@ -77,13 +77,35 @@ class NetDestination:
 
     AOS 10 / Central equivalent: a *named-destination* object referenced in
     policy rules via ``alias:<name>``.
+
+    Central named-destination objects must be either IPv4 **or** IPv6 — mixing
+    is not supported.  If ``mixed_af`` is True the block contains both IPv4 and
+    IPv6 host/network entries and must be split into two separate Central
+    named-destinations before the policy referencing it can be applied.
     """
 
     name: str
     fqdns: List[str] = field(default_factory=list)      # ``name <fqdn>`` entries
     hosts: List[str] = field(default_factory=list)      # ``host <ip>`` entries
     networks: List[str] = field(default_factory=list)   # ``network <ip> <mask>`` entries
-    is_ipv6: bool = False
+    is_ipv6: bool = False   # True if declared as netdestination6 *or* content is IPv6-only
+    mixed_af: bool = False  # True if both IPv4 and IPv6 addresses appear in the block
+
+    @property
+    def entry_count(self) -> int:
+        return len(self.fqdns) + len(self.hosts) + len(self.networks)
+
+    def _classify_af(self) -> None:
+        """Detect address family from entry content and flag mixed blocks."""
+        has_v4 = any(not _is_ipv6(h) for h in self.hosts) or \
+                 any(not _is_ipv6(n.split()[0]) for n in self.networks if n.split())
+        has_v6 = any(_is_ipv6(h) for h in self.hosts) or \
+                 any(_is_ipv6(n.split()[0]) for n in self.networks if n.split())
+        if has_v4 and has_v6:
+            self.mixed_af = True
+        elif has_v6:
+            self.is_ipv6 = True
+        # has_v4 only (or FQDN only) keeps is_ipv6 = False
 
 
 @dataclass
@@ -596,4 +618,8 @@ def parse_config(text: str) -> ParseResult:
                 current_role["role__acl"].append({"acl_type": "session", "pname": m.group(1)})
 
     result.netdestinations = sorted(netdest_names)
+    # Classify address family for each netdestination from its entry content.
+    # This detects mixed IPv4/IPv6 blocks even when the header keyword was ambiguous.
+    for nd in result.netdest_objects:
+        nd._classify_af()
     return result

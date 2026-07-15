@@ -80,6 +80,8 @@ def run(text: str, bridge_mode: bool = False) -> str:
             "hosts": nd.hosts,
             "networks": nd.networks,
             "is_ipv6": nd.is_ipv6,
+            "mixed_af": nd.mixed_af,
+            "entry_count": nd.entry_count,
         }
         for nd in result.parsed.netdest_objects
     ]
@@ -94,7 +96,14 @@ def run(text: str, bridge_mode: bool = False) -> str:
         "central_json_all": {
             "policies": [policy_to_central_json(cp.policy) for cp in result.converted],
             "named_destinations": [
-                {"name": nd.name, "fqdns": nd.fqdns, "hosts": nd.hosts, "networks": nd.networks}
+                {
+                    "name": nd.name,
+                    "address_family": "ipv6" if nd.is_ipv6 else "ipv4",
+                    "mixed_af_warning": nd.mixed_af,
+                    "fqdns": nd.fqdns,
+                    "hosts": nd.hosts,
+                    "networks": nd.networks,
+                }
                 for nd in result.parsed.netdest_objects
             ],
         },
