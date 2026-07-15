@@ -179,6 +179,34 @@ def render_rule_summary(rules: List[Dict[str, Any]]) -> List[str]:
 # ----------------------------------------------------------------------
 
 
+def render_netdestinations(netdest_objects: list) -> str:
+    """Render AOS 8 netdestination blocks as AOS 10 named-destination equivalents.
+
+    AOS 8 ``netdestination`` objects map to Central *named-destination* objects,
+    which are referenced in policy rules via ``alias:<name>``. These must be
+    created in Central before the policies that reference them are applied.
+    """
+    if not netdest_objects:
+        return ""
+    lines: List[str] = [
+        "! ==========================================================",
+        "! Named destinations (create these in Central before applying",
+        "! the policies below that reference them via alias:<name>).",
+        "! ==========================================================",
+    ]
+    for nd in netdest_objects:
+        v6_tag = "6" if nd.is_ipv6 else ""
+        lines.append("named-destination{0} {1}".format(v6_tag, nd.name))
+        for fqdn in nd.fqdns:
+            lines.append("  fqdn {0}".format(fqdn))
+        for host in nd.hosts:
+            lines.append("  host {0}".format(host))
+        for net in nd.networks:
+            lines.append("  network {0}".format(net))
+        lines.append("!")
+    return "\n".join(lines)
+
+
 def render_central_config(policy: CanonicalPolicy) -> str:
     """Render an AOS 10 / Central-style security-policy block.
 

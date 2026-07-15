@@ -188,6 +188,12 @@ function render(data) {
   const parts = [];
   if (els.optReport.checked) parts.push(renderReport(data));
 
+  // Named destinations (AOS 8 netdestination blocks) appear before the policies
+  // so engineers know to create them in Central first.
+  if (data.netdestinations && data.netdestinations.length) {
+    parts.push(renderNamedDestinations(data));
+  }
+
   for (const p of data.policies) {
     parts.push(renderPolicy(p, data));
   }
@@ -196,6 +202,40 @@ function render(data) {
       <p class="muted">No <code>ip access-list session</code> blocks were parsed from the input.</p></div>`);
   }
   els.output.innerHTML = parts.join("\n");
+}
+
+function renderNamedDestinations(data) {
+  if (currentMode === "config") {
+    // In config mode, show the rendered named-destination block.
+    return data.netdest_config
+      ? `<pre class="block">${esc(data.netdest_config)}</pre>`
+      : "";
+  }
+  if (currentMode === "json") {
+    const objs = (data.central_json_all.named_destinations || []);
+    return objs.length
+      ? `<pre class="block">${esc(JSON.stringify({ named_destinations: objs }, null, 2))}</pre>`
+      : "";
+  }
+  // Side-by-side / text mode: a summary card per netdestination.
+  const cards = data.netdestinations.map((nd) => {
+    const entries = [];
+    for (const f of nd.fqdns)    entries.push(`<tr><td class="aos8">name ${esc(f)}</td><td class="arrow">→</td><td class="aos10">fqdn ${esc(f)}</td></tr>`);
+    for (const h of nd.hosts)    entries.push(`<tr><td class="aos8">host ${esc(h)}</td><td class="arrow">→</td><td class="aos10">host ${esc(h)}</td></tr>`);
+    for (const n of nd.networks) entries.push(`<tr><td class="aos8">network ${esc(n)}</td><td class="arrow">→</td><td class="aos10">network ${esc(n)}</td></tr>`);
+    const table = entries.length
+      ? `<table class="sxs">
+           <thead><tr><th>AOS 8 (netdestination)</th><th></th><th>AOS 10 (named-destination)</th></tr></thead>
+           <tbody>${entries.join("")}</tbody>
+         </table>`
+      : `<p class="muted" style="padding:8px 12px">No entries (header only)</p>`;
+    return `<div class="result-policy">
+      <h3>${esc(nd.name)} <span class="pill">named-destination</span>
+        <span class="pill warn">create in Central first</span></h3>
+      ${table}
+    </div>`;
+  });
+  return cards.join("\n");
 }
 
 function renderReport(data) {
@@ -324,10 +364,21 @@ function currentOutputText() {
     return JSON.stringify(lastResult.central_json_all, null, 2);
   }
   if (currentMode === "config") {
-    return lastResult.policies.map((p) => p.config).join("\n\n");
+    const parts = [];
+    if (lastResult.netdest_config) parts.push(lastResult.netdest_config);
+    parts.push(...lastResult.policies.map((p) => p.config));
+    return parts.join("\n\n");
   }
   // text / side-by-side -> a readable plaintext export
   const lines = [];
+  // Include netdestination summary in plaintext export.
+  for (const nd of (lastResult.netdestinations || [])) {
+    lines.push(`# named-destination ${nd.name}  [create in Central before applying policies]`);
+    for (const f of nd.fqdns)    lines.push(`  fqdn ${f}`);
+    for (const h of nd.hosts)    lines.push(`  host ${h}`);
+    for (const n of nd.networks) lines.push(`  network ${n}`);
+    lines.push("");
+  }
   for (const p of lastResult.policies) {
     lines.push(`# ${p.name}  [${p.association}${p.role_attribution.length ? " roles=" + p.role_attribution.join(",") : ""}]`);
     for (const t of p.trace) {

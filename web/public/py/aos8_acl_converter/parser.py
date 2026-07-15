@@ -67,8 +67,23 @@ _OPTION_ARGC = {
     "tos": 1,
     "dot1p-priority": 1,
 }
-_ADDRESS_KEYWORDS = {"any", "user", "host", "network", "localip"}
+_ADDRESS_KEYWORDS = {"any", "user", "host", "network", "localip", "alias"}
 _SERVICE_APP_KEYWORDS = {"app", "application", "appcategory", "webcategory", "webreputation", "webcc"}
+
+
+@dataclass
+class NetDestination:
+    """A parsed AOS 8 ``netdestination`` (or ``netdestination6``) block.
+
+    AOS 10 / Central equivalent: a *named-destination* object referenced in
+    policy rules via ``alias:<name>``.
+    """
+
+    name: str
+    fqdns: List[str] = field(default_factory=list)      # ``name <fqdn>`` entries
+    hosts: List[str] = field(default_factory=list)      # ``host <ip>`` entries
+    networks: List[str] = field(default_factory=list)   # ``network <ip> <mask>`` entries
+    is_ipv6: bool = False
 
 
 @dataclass
@@ -90,6 +105,8 @@ class ParseResult:
     warnings: List[ParseWarning] = field(default_factory=list)
     # Netdestination alias names seen (referenced source/dest that resolve to alias).
     netdestinations: List[str] = field(default_factory=list)
+    # Full parsed netdestination objects (name + entries) for AOS10 output.
+    netdest_objects: List[NetDestination] = field(default_factory=list)
 
     def acl_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         for a in self.acl_sessions:
@@ -146,6 +163,12 @@ def _parse_address(tokens: List[str], idx: int, side: str, af_hint: List[str]) -
     if tok == "user":
         fields[disc_key] = "suser" if side == "s" else "duser"
         return fields, idx + 1
+
+    if tok == "alias":
+        # `alias <name>` — named netdestination reference (keyword + name token).
+        fields[disc_key] = "salias" if side == "s" else "dalias"
+        fields["srcalias" if side == "s" else "dstalias"] = tokens[idx + 1]
+        return fields, idx + 2
 
     if tok == "host":
         ip = tokens[idx + 1]
@@ -462,6 +485,10 @@ _ACL_HDR = re.compile(r"^(ip|ipv6)\s+access-list\s+session\s+(\S+)\s*$", re.IGNO
 _ROLE_HDR = re.compile(r"^user-role\s+(\S+)\s*$", re.IGNORECASE)
 _ROLE_ACL = re.compile(r"^access-list\s+session\s+(\S+)", re.IGNORECASE)
 _NETDEST_HDR = re.compile(r"^(?:ipv6\s+)?netdestination(?:6)?\s+(\S+)", re.IGNORECASE)
+# Lines inside a netdestination block.
+_NETDEST_NAME = re.compile(r"^name\s+(\S+)", re.IGNORECASE)
+_NETDEST_HOST = re.compile(r"^host\s+(\S+)", re.IGNORECASE)
+_NETDEST_NET = re.compile(r"^network\s+(\S+)\s+(\S+)", re.IGNORECASE)
 
 
 def parse_config(text: str) -> ParseResult:
@@ -474,17 +501,19 @@ def parse_config(text: str) -> ParseResult:
     result = ParseResult()
     lines = text.splitlines()
 
-    current_kind: Optional[str] = None  # "acl" | "role"
+    current_kind: Optional[str] = None  # "acl" | "role" | "netdest"
     current_acl: Optional[Dict[str, Any]] = None
     current_acl_default_af = "IPV4"
     current_role: Optional[Dict[str, Any]] = None
-    netdests = set()
+    current_netdest: Optional[NetDestination] = None
+    netdest_names: set = set()
 
     def _close():
-        nonlocal current_kind, current_acl, current_role
+        nonlocal current_kind, current_acl, current_role, current_netdest
         current_kind = None
         current_acl = None
         current_role = None
+        current_netdest = None
 
     for line_no, raw_line in enumerate(lines, start=1):
         if not raw_line.strip() or raw_line.strip() == "!":
@@ -494,13 +523,21 @@ def parse_config(text: str) -> ParseResult:
         indented = raw_line[:1] in (" ", "\t")
         stripped = raw_line.strip()
 
-        # Track netdestination aliases for reporting (not translated here).
-        m_nd = _NETDEST_HDR.match(stripped)
-        if m_nd and not indented:
-            netdests.add(m_nd.group(1))
-
         if not indented:
             # A new top-level line closes any open block first.
+            _close()
+
+            m_nd = _NETDEST_HDR.match(stripped)
+            if m_nd:
+                is_v6 = bool(re.match(r"ipv6\s+", stripped, re.IGNORECASE)) or \
+                        bool(re.search(r"netdestination6", stripped, re.IGNORECASE))
+                nd = NetDestination(name=m_nd.group(1), is_ipv6=is_v6)
+                netdest_names.add(nd.name)
+                current_netdest = nd
+                current_kind = "netdest"
+                result.netdest_objects.append(nd)
+                continue
+
             m_acl = _ACL_HDR.match(stripped)
             if m_acl:
                 family = "IPV6" if m_acl.group(1).lower() == "ipv6" else "IPV4"
@@ -522,12 +559,25 @@ def parse_config(text: str) -> ParseResult:
                 result.role_records.append(current_role)
                 continue
 
-            # Some other top-level command -> close current block.
-            _close()
+            # Some other top-level command — already closed above.
             continue
 
         # Indented line -> belongs to the open block.
-        if current_kind == "acl" and current_acl is not None:
+        if current_kind == "netdest" and current_netdest is not None:
+            m = _NETDEST_NAME.match(stripped)
+            if m:
+                current_netdest.fqdns.append(m.group(1))
+                continue
+            m = _NETDEST_HOST.match(stripped)
+            if m:
+                current_netdest.hosts.append(m.group(1))
+                continue
+            m = _NETDEST_NET.match(stripped)
+            if m:
+                current_netdest.networks.append("{0} {1}".format(m.group(1), m.group(2)))
+                continue
+
+        elif current_kind == "acl" and current_acl is not None:
             rule, warns, af = _parse_rule_line(stripped, current_acl_default_af)
             for w in warns:
                 result.warnings.append(ParseWarning(current_acl["accname"], line_no, stripped, w))
@@ -535,14 +585,15 @@ def parse_config(text: str) -> ParseResult:
                                      or rule.get("src") is not None):
                 key = "acl_sess__v6policy" if af == "IPV6" else "acl_sess__v4policy"
                 current_acl[key].append(rule)
-                # Collect alias references as netdestinations for the report.
+                # Collect alias references for the report.
                 for al in (rule.get("srcalias"), rule.get("dstalias")):
                     if al:
-                        netdests.add(al)
+                        netdest_names.add(al)
+
         elif current_kind == "role" and current_role is not None:
             m = _ROLE_ACL.match(stripped)
             if m:
                 current_role["role__acl"].append({"acl_type": "session", "pname": m.group(1)})
 
-    result.netdestinations = sorted(netdests)
+    result.netdestinations = sorted(netdest_names)
     return result

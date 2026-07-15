@@ -15,6 +15,7 @@ from aos8_acl_converter.renderer import (
     format_condition,
     policy_to_central_json,
     render_central_config,
+    render_netdestinations,
 )
 
 
@@ -71,13 +72,31 @@ def run(text: str, bridge_mode: bool = False) -> str:
         for w in result.parsed.warnings
     ]
 
+    # Netdestination objects parsed from the config (name + entries).
+    netdests = [
+        {
+            "name": nd.name,
+            "fqdns": nd.fqdns,
+            "hosts": nd.hosts,
+            "networks": nd.networks,
+            "is_ipv6": nd.is_ipv6,
+        }
+        for nd in result.parsed.netdest_objects
+    ]
+
     payload = {
         "ok": True,
         "policies": policies,
         "report": result.report.to_dict(),
         "warnings": warnings,
+        "netdestinations": netdests,
+        "netdest_config": render_netdestinations(result.parsed.netdest_objects),
         "central_json_all": {
-            "policies": [policy_to_central_json(cp.policy) for cp in result.converted]
+            "policies": [policy_to_central_json(cp.policy) for cp in result.converted],
+            "named_destinations": [
+                {"name": nd.name, "fqdns": nd.fqdns, "hosts": nd.hosts, "networks": nd.networks}
+                for nd in result.parsed.netdest_objects
+            ],
         },
     }
     return json.dumps(payload)
