@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aos8-acl-converter"
+version = "1.0.0"
+description = "Convert & validate AOS 8 session ACLs / user-roles to AOS 10 (Aruba Central) security policies."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Network Automation" }]
+keywords = ["aruba", "aos8", "aos10", "central", "acl", "firewall", "migration"]
+dependencies = ["typer>=0.9,<1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+aos8-acl-convert = "aos8_acl_converter.cli:main"
+
+[tool.setuptools]
+packages = ["aos8_acl_converter"]
+
+[tool.setuptools.package-data]
+aos8_acl_converter = ["py.typed"]

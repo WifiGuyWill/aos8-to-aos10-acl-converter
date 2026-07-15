@@ -1,0 +1,5 @@
+# Runtime dependencies for aos8_acl_converter.
+#
+# The tool is deliberately near-stdlib. Typer gives a polished CLI, but the
+# package also ships an argparse fallback, so it runs even if Typer is absent.
+typer>=0.9,<1.0
