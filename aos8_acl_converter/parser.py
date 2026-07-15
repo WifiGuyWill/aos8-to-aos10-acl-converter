@@ -506,6 +506,10 @@ def _parse_rule_line(line: str, address_family_default: str) -> Tuple[Optional[D
 _ACL_HDR = re.compile(r"^(ip|ipv6)\s+access-list\s+session\s+(\S+)\s*$", re.IGNORECASE)
 _ROLE_HDR = re.compile(r"^user-role\s+(\S+)\s*$", re.IGNORECASE)
 _ROLE_ACL = re.compile(r"^access-list\s+session\s+(\S+)", re.IGNORECASE)
+# Additional user-role attributes that map to Central Role fields.
+_ROLE_VLAN = re.compile(r"^(?:access-)?vlan\s+(\S+)", re.IGNORECASE)
+_ROLE_CP   = re.compile(r"^captive-portal\s+(\S+)", re.IGNORECASE)
+_ROLE_BWC  = re.compile(r"^bandwidth-contract\s+(\S+)", re.IGNORECASE)
 _NETDEST_HDR = re.compile(r"^(?:ipv6\s+)?netdestination(?:6)?\s+(\S+)", re.IGNORECASE)
 # Lines inside a netdestination block.
 _NETDEST_NAME = re.compile(r"^name\s+(\S+)", re.IGNORECASE)
@@ -616,6 +620,18 @@ def parse_config(text: str) -> ParseResult:
             m = _ROLE_ACL.match(stripped)
             if m:
                 current_role["role__acl"].append({"acl_type": "session", "pname": m.group(1)})
+                continue
+            m = _ROLE_VLAN.match(stripped)
+            if m:
+                current_role["_vlan"] = m.group(1)
+                continue
+            m = _ROLE_CP.match(stripped)
+            if m:
+                current_role["_captive_portal"] = m.group(1)
+                continue
+            m = _ROLE_BWC.match(stripped)
+            if m:
+                current_role.setdefault("_bwc", []).append(m.group(1))
 
     result.netdestinations = sorted(netdest_names)
     # Classify address family for each netdestination from its entry content.

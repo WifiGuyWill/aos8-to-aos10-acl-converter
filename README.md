@@ -15,6 +15,19 @@ project, and produces a clear **side-by-side comparison**, a machine-readable
 needs to review — with special attention to **bridge-mode** enforcement
 differences.
 
+## 🌐 Live Web App
+
+**[https://aos-convert.wifi-guys.com/](https://aos-convert.wifi-guys.com/)**
+
+No install required. Paste your AOS 8 config directly into the browser —
+everything runs locally via [Pyodide](https://pyodide.org) (WASM Python),
+so **your configuration never leaves your device**.
+
+The web app includes a **Central Guide** mode that walks you through each
+step in the Aruba Central GUI — creating Named Destinations (Aliases), Roles,
+and Security Policies — with field-by-field previews mirroring the actual
+Central dialogs.
+
 ---
 
 ## Why this exists

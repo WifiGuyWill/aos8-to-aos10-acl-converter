@@ -19,6 +19,34 @@ from aos8_acl_converter.renderer import (
 )
 
 
+def _build_roles(result) -> list:
+    """Build per-role dicts for the Central Guide: name, attributes from the
+    AOS 8 user-role block (VLAN, captive-portal, BW contract), and which
+    policies need to be assigned to this role after creation.
+    """
+    role_map = {r["rname"]: r for r in result.parsed.role_records}
+    all_roles = sorted(set(
+        role
+        for cp in result.converted
+        for role in cp.stat.role_attribution
+    ))
+    roles = []
+    for rname in all_roles:
+        rd = role_map.get(rname, {})
+        roles.append({
+            "name": rname,
+            "vlan": rd.get("_vlan"),
+            "captive_portal": rd.get("_captive_portal"),
+            "bwc": rd.get("_bwc", []),
+            "policies": [
+                cp.policy.name
+                for cp in result.converted
+                if rname in cp.stat.role_attribution
+            ],
+        })
+    return roles
+
+
 def run(text: str, bridge_mode: bool = False) -> str:
     """Translate ``text`` and return a JSON string for the web UI.
 
@@ -107,5 +135,10 @@ def run(text: str, bridge_mode: bool = False) -> str:
                 for nd in result.parsed.netdest_objects
             ],
         },
+        # Per-role details used by the Central Guide mode. Cross-references the
+        # role_records parsed from user-role blocks with the role_attribution on
+        # each converted policy so the guide knows which policies to assign to
+        # which role after creation.
+        "roles": _build_roles(result),
     }
     return json.dumps(payload)

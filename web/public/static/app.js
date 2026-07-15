@@ -25,7 +25,7 @@ const els = {};
 let pyodide = null;
 let engineReady = false;
 let lastResult = null;
-let currentMode = "text";
+let currentMode = "guide";
 
 function $(id) { return document.getElementById(id); }
 
@@ -185,6 +185,11 @@ function countIssues(data) {
 /* ------------------------------- rendering ------------------------------- */
 
 function render(data) {
+  if (currentMode === "guide") {
+    els.output.innerHTML = renderGuide(data);
+    return;
+  }
+
   const parts = [];
   if (els.optReport.checked) parts.push(renderReport(data));
 
@@ -217,38 +222,28 @@ function renderNamedDestinations(data) {
       ? `<pre class="block">${esc(JSON.stringify({ named_destinations: objs }, null, 2))}</pre>`
       : "";
   }
-  // Side-by-side / text mode: render each netdestination as a Central "Create an Alias" preview.
-  const cards = data.netdestinations.map((nd) => {
-    if (nd.mixed_af) {
-      // Mixed AF: show two alias previews side by side with a split warning.
-      const v4Hosts    = nd.hosts.filter((h) => !h.includes(":"));
-      const v6Hosts    = nd.hosts.filter((h) =>  h.includes(":"));
-      const v4Networks = nd.networks.filter((n) => !n.includes(":"));
-      const v6Networks = nd.networks.filter((n) =>  n.includes(":"));
-      return `<div class="result-policy">
-        <h3>${esc(nd.name)} <span class="pill err">⚠ mixed IPv4 + IPv6 — split required</span>
-          <span class="pill warn">create in Central first</span></h3>
-        <ul class="issues">
-          <li class="err">Central Alias/named-destination objects are <strong>single address-family</strong> (IPv4 <em>or</em> IPv6 — not both).
-            Split this netdestination into two aliases and update any policy rules that reference
-            <code>alias:${esc(nd.name)}</code> to use the split names.</li>
-        </ul>
-        <div class="nd-split">
-          ${renderAliasPreview(nd.name + "-v4", "IPv4", nd.fqdns, v4Hosts, v4Networks)}
-          ${renderAliasPreview(nd.name + "-v6", "IPv6", [],      v6Hosts, v6Networks)}
-        </div>
-      </div>`;
-    }
-
+  // Side-by-side (text) mode: compact plain-text list — full GUI previews are in Central Guide.
+  const rows = data.netdestinations.map((nd) => {
     const af = nd.is_ipv6 ? "IPv6" : "IPv4";
+    const mixedTag = nd.mixed_af
+      ? ` <span class="pill err">⚠ mixed AF — split in Central</span>` : "";
+    const fqdnLines  = nd.fqdns.map(f => `  name ${f}`).join("\n");
+    const hostLines  = nd.hosts.map(h => `  host ${h}`).join("\n");
+    const netLines   = nd.networks.map(n => `  network ${n}`).join("\n");
+    const body = [fqdnLines, hostLines, netLines].filter(Boolean).join("\n") || "  (empty)";
     return `<div class="result-policy">
-      <h3>${esc(nd.name)} <span class="pill role">${af}</span>
+      <h3>netdestination ${esc(nd.name)}
+        <span class="pill role">${af}</span>
         <span class="pill">${nd.entry_count} entr${nd.entry_count !== 1 ? "ies" : "y"}</span>
-        <span class="pill warn">create in Central first</span></h3>
-      ${renderAliasPreview(nd.name, af, nd.fqdns, nd.hosts, nd.networks)}
+        <span class="pill warn">create in Central first</span>${mixedTag}
+      </h3>
+      <pre class="block">${esc(body)}</pre>
+      <p class="muted small" style="margin:.25rem 0 0">
+        Switch to <strong>Central Guide</strong> for the step-by-step GUI walkthrough.
+      </p>
     </div>`;
   });
-  return cards.join("\n");
+  return rows.join("\n");
 }
 
 /* Render a single "Create an Alias" Central GUI preview panel. */
@@ -431,6 +426,9 @@ function renderError(title, detail) {
 
 function currentOutputText() {
   if (!lastResult) return "";
+  if (currentMode === "guide") {
+    return guideOutputText(lastResult);
+  }
   if (currentMode === "json") {
     return JSON.stringify(lastResult.central_json_all, null, 2);
   }
@@ -499,4 +497,425 @@ function prettyEnum(s) {
   return String(s)
     .replace(/^ACTION_/, "").replace(/^RULE_/, "")
     .toLowerCase().replace(/_/g, " ");
+}
+
+/* ========================= CENTRAL GUIDE MODE ========================= */
+
+/**
+ * Top-level guide renderer. Produces a 3-step Central configuration walkthrough:
+ *   Step 1 — Create Named Destinations (Aliases)
+ *   Step 2 — Create Roles
+ *   Step 3 — Create Security Policies + assign rules
+ *
+ * Each step mirrors the Aruba Central GUI dialogs so engineers can follow
+ * along field-by-field.
+ */
+function renderGuide(data) {
+  const hasNetdests = data.netdestinations && data.netdestinations.length > 0;
+  const hasRoles    = (data.roles || []).length > 0;
+  const hasPolicies = data.policies.length > 0;
+
+  let totalSteps = (hasNetdests ? 1 : 0) + (hasRoles ? 1 : 0) + (hasPolicies ? 1 : 0);
+  if (!totalSteps) {
+    return `<div class="error-box"><h3>Nothing to guide</h3>
+      <p class="muted">No policies, roles, or named-destinations were found. Convert a config first.</p></div>`;
+  }
+
+  const parts = [];
+  parts.push(`<div class="guide-intro">
+    <h3>📋 Aruba Central Configuration Guide</h3>
+    <p class="muted">Follow these steps to create the equivalent configuration in Aruba Central.
+    Each panel mirrors the actual Central GUI dialog — enter the highlighted values directly.</p>
+    <p class="muted small">Fields shown in <span class="from-aos8-sample">orange</span> come from your AOS&nbsp;8 config.
+    Fields showing <span class="placeholder-sample">—</span> were not in the source config and need manual review.</p>
+  </div>`);
+
+  let stepNum = 0;
+
+  if (hasNetdests) {
+    stepNum++;
+    const content = data.netdestinations.map((nd) => renderNdGuideItem(nd)).join("\n");
+    parts.push(renderGuideStep(stepNum, totalSteps,
+      "Create Named Destinations",
+      "Security → Policies → Aliases → + Add",
+      "Create these aliases <strong>before</strong> configuring roles and policies — policy rules reference them by name.",
+      content));
+  }
+
+  if (hasRoles) {
+    stepNum++;
+    const content = data.roles.map(renderRolePreview).join("\n");
+    parts.push(renderGuideStep(stepNum, totalSteps,
+      "Create Roles",
+      "Security → Roles → + Add Role",
+      "Create a role for each user segment. The role name must exactly match the AOS&nbsp;8 <code>user-role</code> name.",
+      content));
+  }
+
+  if (hasPolicies) {
+    stepNum++;
+    const content = data.policies.map((p) => renderPolicyGuide(p)).join("\n");
+    parts.push(renderGuideStep(stepNum, totalSteps,
+      "Create Security Policies &amp; Rules",
+      "Security → Policies → + Add Policy",
+      "Create each security policy, add its rules, then assign the policy to the matching role.",
+      content));
+  }
+
+  return parts.join("\n");
+}
+
+/** Wraps a guide step in a numbered, collapsible section with nav breadcrumb. */
+function renderGuideStep(num, total, title, navPath, description, content) {
+  const crumbs = navPath.split(" → ")
+    .map(s => `<span class="nav-crumb">${s}</span>`)
+    .join(`<span class="nav-arrow"> → </span>`);
+
+  return `<div class="guide-step">
+    <div class="guide-step-hdr">
+      <span class="guide-step-badge">Step ${num} of ${total}</span>
+      <h3 class="guide-step-title">${title}</h3>
+    </div>
+    <div class="guide-nav-path">${crumbs}</div>
+    <p class="guide-step-desc">${description}</p>
+    <div class="guide-step-content">
+      ${content}
+    </div>
+  </div>`;
+}
+
+/** Renders one netdestination as a guide item (alias preview + heading). */
+function renderNdGuideItem(nd) {
+  if (nd.mixed_af) {
+    const v4Hosts    = nd.hosts.filter(h => !h.includes(":"));
+    const v6Hosts    = nd.hosts.filter(h =>  h.includes(":"));
+    const v4Networks = nd.networks.filter(n => !n.includes(":"));
+    const v6Networks = nd.networks.filter(n =>  n.includes(":"));
+    return `<div class="guide-item">
+      <div class="guide-item-label">${esc(nd.name)}
+        <span class="pill err">⚠ mixed IPv4 + IPv6 — create two aliases</span></div>
+      <div class="nd-split">
+        ${renderAliasPreview(nd.name + "-v4", "IPv4", nd.fqdns, v4Hosts, v4Networks)}
+        ${renderAliasPreview(nd.name + "-v6", "IPv6", [], v6Hosts, v6Networks)}
+      </div>
+    </div>`;
+  }
+  const af = nd.is_ipv6 ? "IPv6" : "IPv4";
+  return `<div class="guide-item">
+    <div class="guide-item-label">${esc(nd.name)}
+      <span class="pill role">${af}</span>
+      <span class="pill">${nd.entry_count} entr${nd.entry_count !== 1 ? "ies" : "y"}</span></div>
+    ${renderAliasPreview(nd.name, af, nd.fqdns, nd.hosts, nd.networks)}
+  </div>`;
+}
+
+/**
+ * Renders a Central "Create Role" GUI preview card.
+ * Fields from the AOS 8 user-role block (vlan, captive-portal, bwc) are
+ * highlighted in orange. Unknown fields show placeholders.
+ */
+function renderRolePreview(role) {
+  const vlanVal = role.vlan
+    ? `<span class="from-aos8">${esc(role.vlan)}</span>`
+    : `<span class="placeholder">—</span>`;
+  const cpVal = role.captive_portal
+    ? `<span class="from-aos8">${esc(role.captive_portal)}</span>`
+    : `<span class="placeholder">—</span>`;
+  const bwcRow = (role.bwc && role.bwc.length)
+    ? `<div class="role-field"><label class="role-label">Bandwidth Contract <span class="aos8-note">(AOS 8)</span></label>
+         <div class="role-value"><span class="from-aos8">${role.bwc.map(esc).join(", ")}</span>
+           <span class="muted small"> — verify equivalent in Central</span></div></div>` : "";
+  const policiesNote = (role.policies && role.policies.length)
+    ? `<div class="role-policies-note">
+         <span class="muted small">After creation, assign ${role.policies.length === 1 ? "policy" : "policies"}:</span>
+         ${role.policies.map(p => `<code class="policy-chip">${esc(p)}</code>`).join(" ")}
+       </div>` : "";
+
+  return `<div class="role-preview">
+    <div class="role-preview-hdr">
+      <span class="role-icon">👤</span>
+      <span class="role-preview-name">${esc(role.name)}</span>
+    </div>
+    <div class="role-fields">
+      <div class="role-field">
+        <label class="role-label">Name <span class="required">*</span></label>
+        <div class="role-value"><span class="from-aos8">${esc(role.name)}</span></div>
+      </div>
+      <div class="role-field">
+        <label class="role-label">Description</label>
+        <div class="role-value placeholder">Enter description</div>
+      </div>
+      <div class="role-field">
+        <label class="role-label">VLAN ID</label>
+        <div class="role-value">${vlanVal}</div>
+      </div>
+      <div class="role-field">
+        <label class="role-label">Captive Portal Profile</label>
+        <div class="role-value">${cpVal}</div>
+      </div>
+      <div class="role-field">
+        <label class="role-label">GPID <span class="required">*</span></label>
+        <div class="role-value placeholder">900 <span class="muted">(default)</span></div>
+      </div>
+      <div class="role-field role-field-wide">
+        <label class="role-label">Dynamic Application Prioritization</label>
+        <div class="role-value"><span class="cb-off">☐</span> <span class="muted">Disabled by default</span></div>
+      </div>
+      <div class="role-field role-field-wide">
+        <label class="role-label">Device-Specific Parameters</label>
+        <div class="role-value"><span class="cb-off">☐</span> Switch &nbsp;&nbsp; <span class="cb-off">☐</span> Gateway</div>
+      </div>
+      ${bwcRow}
+    </div>
+    ${policiesNote}
+  </div>`;
+}
+
+/**
+ * Renders a policy block in guide mode: policy-name field, role-assignment
+ * note, then one rule card per translated rule.
+ */
+function renderPolicyGuide(p) {
+  const rules = (p.central_json["security-policy"] || {})["policy-rule"] || [];
+  const roleNote = (p.role_attribution && p.role_attribution.length)
+    ? `<div class="policy-role-note">
+         <span class="muted small">After creating the policy, assign it to role${p.role_attribution.length !== 1 ? "s" : ""}:</span>
+         ${p.role_attribution.map(r => `<code class="policy-chip">${esc(r)}</code>`).join(" ")}
+         <span class="muted small">— via Security → Roles → [role] → Edit → Policies</span>
+       </div>` : "";
+
+  const ruleCards = rules.length
+    ? rules.map((r, i) => renderRuleCard(r, i + 1, rules.length)).join("\n")
+    : `<p class="muted">No rules translated for this policy.</p>`;
+
+  return `<div class="guide-policy">
+    <div class="guide-policy-hdr">
+      <span class="guide-policy-icon">📄</span>
+      <h4 class="guide-policy-name">${esc(p.name)}</h4>
+      ${p.unresolved ? `<span class="pill err">⚠ unresolved → review</span>` : ""}
+    </div>
+    <div class="role-field" style="margin-bottom:.75rem">
+      <label class="role-label">Policy Name</label>
+      <div class="role-value"><span class="from-aos8">${esc(p.name)}</span></div>
+    </div>
+    ${roleNote}
+    <div class="guide-rules-hdr">Rules <span class="muted small">(${rules.length} total — add each in order)</span></div>
+    <div class="guide-rules">${ruleCards}</div>
+  </div>`;
+}
+
+/**
+ * Renders a single translated Central rule as a "Create Rule" dialog preview.
+ * Layout mirrors the Central GUI: Source section, Destination section, then
+ * Address Family / Service / Action row.
+ */
+function renderRuleCard(rule, num, total) {
+  const cond   = rule.condition || {};
+  const src    = cond.source || {};
+  const dst    = cond.destination || {};
+  const af     = (cond["address-family"] || "IPV4") === "IPV6" ? "IPv6" : "IPv4";
+  const action = rule.action || {};
+
+  const srcType   = addrTypeLabel(src.type);
+  const srcDetail = addrDetail(src);
+  const dstType   = addrTypeLabel(dst.type);
+  const dstDetail = addrDetail(dst);
+  const svc       = serviceLabel(cond);
+  const act       = actionLabel(action.type);
+  const actClass  = action.type === "ACTION_ALLOW" ? "act-allow"
+                  : action.type === "ACTION_DENY"  ? "act-deny"
+                  : "act-other";
+
+  const afDot = (label) =>
+    `<span class="af-radio ${label === af ? "af-selected" : ""}">${label}</span>`;
+
+  const srcBlock = srcDetail
+    ? `<div class="rule-field">
+         <label class="rule-label">Source Type</label>
+         <div class="rule-value">${esc(srcType)}</div>
+       </div>
+       <div class="rule-field">
+         <label class="rule-label">${esc(srcType)}</label>
+         <div class="rule-value rule-ref">${esc(srcDetail)}</div>
+       </div>`
+    : `<div class="rule-field">
+         <label class="rule-label">Source</label>
+         <div class="rule-value">${esc(srcType)}</div>
+       </div>`;
+
+  const dstBlock = dstDetail
+    ? `<div class="rule-field">
+         <label class="rule-label">Destination Type</label>
+         <div class="rule-value">${esc(dstType)}</div>
+       </div>
+       <div class="rule-field">
+         <label class="rule-label">${esc(dstType)}</label>
+         <div class="rule-value rule-ref">${esc(dstDetail)}</div>
+       </div>`
+    : `<div class="rule-field">
+         <label class="rule-label">Destination</label>
+         <div class="rule-value">${esc(dstType)}</div>
+       </div>`;
+
+  return `<div class="rule-card">
+    <div class="rule-card-hdr">
+      <span class="rule-num">Rule ${num}</span>
+      <span class="rule-act-badge ${actClass}">${esc(act)}</span>
+    </div>
+    <div class="rule-sections">
+      <div class="rule-section">
+        <div class="rule-section-lbl">SOURCE</div>
+        ${srcBlock}
+      </div>
+      <div class="rule-section">
+        <div class="rule-section-lbl">DESTINATION</div>
+        ${dstBlock}
+      </div>
+      <div class="rule-section rule-section-misc">
+        <div class="rule-field">
+          <label class="rule-label">Address Family</label>
+          <div class="rule-value">${afDot("IPv4")} ${afDot("IPv6")}</div>
+        </div>
+        <div class="rule-field">
+          <label class="rule-label">Service / Application</label>
+          <div class="rule-value rule-ref">${esc(svc)}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- address / service / action helpers for guide mode ---------- */
+
+function addrTypeLabel(type) {
+  const map = {
+    ADDRESS_ANY:     "Any",
+    ADDRESS_ROLE:    "Access Role",
+    ADDRESS_ALIAS:   "Network Destination",
+    ADDRESS_HOST:    "Host IP",
+    ADDRESS_NETWORK: "Network",
+    ADDRESS_USER:    "Authenticated User",
+    ADDRESS_LOCAL:   "Local IP",
+  };
+  return map[type] || type || "Any";
+}
+
+function addrDetail(addr) {
+  const t = addr.type;
+  if (!t || t === "ADDRESS_ANY" || t === "ADDRESS_USER" || t === "ADDRESS_LOCAL") return null;
+  if (t === "ADDRESS_ROLE") {
+    return addr.role || (addr["role-list"] || []).join(", ") || null;
+  }
+  if (t === "ADDRESS_ALIAS") return addr["net-group"] || null;
+  if (t === "ADDRESS_HOST") {
+    const ha = addr["host-address"] || {};
+    return ha["host-ipv4-address"] || ha["host-ipv6-address"] || null;
+  }
+  if (t === "ADDRESS_NETWORK") {
+    const na = addr["network-address"] || {};
+    return na["network-ipv4-address"] || na["network-ipv6-address"] || null;
+  }
+  return null;
+}
+
+function serviceLabel(cond) {
+  const svcs = cond.services || {};
+  if (svcs["net-service"])    return svcs["net-service"];
+  if (svcs["application"])    return "App: " + svcs["application"];
+  if (svcs["app-category"])   return "App Category: " + svcs["app-category"];
+  if (svcs["web-category"])   return "Web Category: " + svcs["web-category"];
+  if (svcs["web-reputation"]) return "Web Reputation: " + svcs["web-reputation"];
+  const ih = cond["ip-header"] || {};
+  const proto = ih.protocol;
+  if (proto) {
+    const lbl = { IP_TCP: "TCP", IP_UDP: "UDP", IP_ICMP: "ICMP", IPV6_ICMP: "ICMPv6" }[proto] || proto;
+    const dp  = (cond["transport-fields"] || {})["destination-port"] || {};
+    if (dp.min !== undefined) {
+      return dp.operator === "COMPARISON_RANGE" ? `${lbl} ${dp.min}–${dp.max}` : `${lbl} ${dp.min}`;
+    }
+    return lbl;
+  }
+  return "Any";
+}
+
+function actionLabel(type) {
+  return {
+    ACTION_ALLOW:           "Allow",
+    ACTION_DENY:            "Deny",
+    ACTION_SOURCE_NAT:      "Source NAT",
+    ACTION_DESTINATION_NAT: "Destination NAT",
+    ACTION_DUAL_NAT:        "Dual NAT",
+    ACTION_REDIRECT:        "Redirect",
+    ACTION_CAPTIVE_PORTAL:  "Captive Portal",
+    ACTION_MIRROR:          "Mirror",
+    ACTION_ROUTE:           "Route",
+  }[type] || type || "Deny";
+}
+
+/** Plaintext export for guide mode (copy/download). */
+function guideOutputText(data) {
+  const lines = ["# Aruba Central Configuration Guide", ""];
+  const hasNetdests = data.netdestinations && data.netdestinations.length > 0;
+  const hasRoles    = (data.roles || []).length > 0;
+  let totalSteps = (hasNetdests ? 1 : 0) + ((data.roles || []).length ? 1 : 0) + (data.policies.length ? 1 : 0);
+  let stepNum = 0;
+
+  if (hasNetdests) {
+    stepNum++;
+    lines.push(`## Step ${stepNum} of ${totalSteps}: Create Named Destinations`);
+    lines.push("Navigation: Security → Policies → Aliases → + Add\n");
+    for (const nd of data.netdestinations) {
+      const af = nd.is_ipv6 ? "IPv6" : "IPv4";
+      lines.push(`### ${nd.name}  [${af}${nd.mixed_af ? " — SPLIT REQUIRED" : ""}]`);
+      for (const f of nd.fqdns)    lines.push(`  Domain Name: ${f}`);
+      for (const h of nd.hosts)    lines.push(`  Host IP: ${h}`);
+      for (const n of nd.networks) lines.push(`  Network: ${n}`);
+      lines.push("");
+    }
+  }
+
+  if (hasRoles) {
+    stepNum++;
+    lines.push(`## Step ${stepNum} of ${totalSteps}: Create Roles`);
+    lines.push("Navigation: Security → Roles → + Add Role\n");
+    for (const role of data.roles) {
+      lines.push(`### ${role.name}`);
+      lines.push(`  Name:  ${role.name}`);
+      if (role.vlan)            lines.push(`  VLAN ID:                 ${role.vlan}`);
+      if (role.captive_portal)  lines.push(`  Captive Portal Profile:  ${role.captive_portal}`);
+      if (role.bwc && role.bwc.length) lines.push(`  Bandwidth Contract(s):   ${role.bwc.join(", ")}`);
+      lines.push(`  GPID:  900 (default)`);
+      if (role.policies && role.policies.length) {
+        lines.push(`  Assign policies: ${role.policies.join(", ")}`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (data.policies.length) {
+    stepNum++;
+    lines.push(`## Step ${stepNum} of ${totalSteps}: Create Security Policies`);
+    lines.push("Navigation: Security → Policies → + Add Policy\n");
+    for (const p of data.policies) {
+      lines.push(`### Policy: ${p.name}`);
+      if (p.role_attribution && p.role_attribution.length) {
+        lines.push(`Assign to role(s): ${p.role_attribution.join(", ")}`);
+        lines.push("  (via Security → Roles → [role] → Edit → Policies)");
+      }
+      const rules = (p.central_json["security-policy"] || {})["policy-rule"] || [];
+      for (const r of rules) {
+        const cond = r.condition || {};
+        const src  = cond.source || {};
+        const dst  = cond.destination || {};
+        const af   = (cond["address-family"] || "IPV4") === "IPV6" ? "IPv6" : "IPv4";
+        const act  = actionLabel((r.action || {}).type);
+        const srcStr = addrDetail(src) ? `${addrTypeLabel(src.type)}: ${addrDetail(src)}` : addrTypeLabel(src.type);
+        const dstStr = addrDetail(dst) ? `${addrTypeLabel(dst.type)}: ${addrDetail(dst)}` : addrTypeLabel(dst.type);
+        lines.push(`  Rule ${r.position}: ${srcStr} → ${dstStr} | Service: ${serviceLabel(cond)} | ${act} | ${af}`);
+      }
+      lines.push("");
+    }
+  }
+
+  return lines.join("\n");
 }

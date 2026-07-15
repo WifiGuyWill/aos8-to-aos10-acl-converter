@@ -256,3 +256,243 @@ pre.block .cfg-action-deny { color: var(--red); }
 .nd-entries td.nd-cond { font-family: var(--mono); word-break: break-all; }
 .nd-empty { padding: 8px; color: #8b97b3; font-style: italic; margin: 0; }
 
+/* ===================================================================
+   CENTRAL GUIDE MODE
+   =================================================================== */
+
+/* Intro banner */
+.guide-intro {
+  background: linear-gradient(135deg, #f0f4ff 0%, #fdf6f0 100%);
+  border: 1px solid #ccd3e8;
+  border-radius: 10px;
+  padding: 18px 22px;
+  margin-bottom: 20px;
+  color: #1a2038;
+}
+.guide-intro h3 { margin: 0 0 6px; font-size: 17px; color: #1a2038; }
+.guide-intro .muted { color: #5a6480; margin: 4px 0 0; }
+
+/* Sample badges inline in guide-intro */
+.from-aos8-sample {
+  display: inline-block; background: #fff5ef; border: 1px solid #ffd0b0;
+  color: var(--accent); border-radius: 4px; padding: 0 5px; font-size: 12px;
+  font-weight: 600; vertical-align: middle;
+}
+.placeholder-sample {
+  display: inline-block; background: #f5f5f5; border: 1px solid #ccc;
+  color: #888; border-radius: 4px; padding: 0 5px; font-size: 12px;
+  vertical-align: middle;
+}
+
+/* Guide step container */
+.guide-step {
+  background: #f7f9fc;
+  border: 1px solid #ccd3e8;
+  border-radius: 10px;
+  margin-bottom: 24px;
+  overflow: hidden;
+}
+
+.guide-step-hdr {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 20px;
+  background: linear-gradient(90deg, #1e2740 0%, #232e4a 100%);
+  border-bottom: 1px solid #2a3550;
+}
+.guide-step-badge {
+  flex-shrink: 0;
+  background: var(--accent); color: #fff;
+  border-radius: 20px; font-size: 11px; font-weight: 700;
+  padding: 3px 10px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.guide-step-title {
+  margin: 0; font-size: 16px; color: #e6ecf7; font-weight: 700;
+}
+
+.guide-nav-path {
+  display: flex; align-items: center; flex-wrap: wrap;
+  padding: 8px 20px;
+  background: #eef1f8; border-bottom: 1px solid #d0d7e5;
+  font-size: 12px; color: #334060;
+}
+.nav-crumb {
+  font-weight: 600; color: #2a3a6a;
+  background: #fff; border: 1px solid #c8d0e0;
+  border-radius: 5px; padding: 2px 8px;
+}
+.nav-arrow { margin: 0 4px; color: var(--accent); font-weight: 700; }
+
+.guide-step-desc {
+  padding: 10px 20px 4px;
+  font-size: 13px; color: #5a6480; margin: 0;
+}
+.guide-step-desc code { background: #e8ecf5; padding: 0 4px; border-radius: 3px; font-size: 12px; }
+
+.guide-step-content {
+  padding: 16px 20px;
+}
+
+/* Guide item wrapper (wraps alias preview + label) */
+.guide-item { margin-bottom: 16px; }
+.guide-item:last-child { margin-bottom: 0; }
+.guide-item-label {
+  font-weight: 700; font-size: 14px; color: #1a2038;
+  margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+}
+
+/* -------- Role preview card -------- */
+.role-preview {
+  background: #fff;
+  border: 1px solid #c8d0e0;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.role-preview:last-child { margin-bottom: 0; }
+
+.role-preview-hdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, #f4f7ff 0%, #fff 100%);
+  border-bottom: 1px solid #e0e5f0;
+}
+.role-icon { font-size: 18px; line-height: 1; }
+.role-preview-name { font-weight: 800; font-size: 15px; color: #1a2038; }
+
+.role-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 12px 0;
+}
+.role-field {
+  padding: 7px 16px;
+  border-bottom: 1px solid #f0f2f8;
+}
+.role-field-wide { grid-column: span 2; }
+.role-label {
+  display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: #7b87a8; margin-bottom: 3px;
+}
+.role-label .required { color: var(--red); }
+.aos8-note { color: #aab; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.role-value { font-size: 13px; color: #1a2038; }
+.role-value.placeholder { color: #9ea8c0; font-style: italic; }
+.from-aos8 {
+  background: #fff5ef; border: 1px solid #ffd0b0;
+  color: #c05a00; border-radius: 4px; padding: 1px 6px;
+  font-size: 12px; font-weight: 600; font-family: var(--mono);
+}
+.placeholder { color: #9ea8c0; font-style: italic; }
+.cb-off { color: #a0a8bb; font-size: 14px; }
+
+.role-policies-note {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 9px 16px 11px;
+  background: #f7f9fc; border-top: 1px solid #e8ecf5;
+  font-size: 12px;
+}
+.policy-chip {
+  background: #e8edfa; color: #2a3a6a; border-radius: 4px;
+  padding: 2px 7px; font-size: 12px; font-family: var(--mono);
+  border: 1px solid #c4cce6;
+}
+
+/* -------- Policy guide block -------- */
+.guide-policy {
+  background: #fff;
+  border: 1px solid #c8d0e0;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.guide-policy:last-child { margin-bottom: 0; }
+
+.guide-policy-hdr {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 16px;
+  background: linear-gradient(90deg, #f4f7ff 0%, #fff 100%);
+  border-bottom: 1px solid #e0e5f0;
+}
+.guide-policy-icon { font-size: 18px; line-height: 1; }
+.guide-policy-name { margin: 0; font-size: 15px; font-weight: 800; color: #1a2038; }
+.guide-policy > .role-field { padding: 10px 16px; }
+
+.policy-role-note {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 7px 16px 8px;
+  background: #f0f4ff; border-top: 1px solid #e0e8f8;
+  border-bottom: 1px solid #e0e8f8;
+  font-size: 12px; color: #334060;
+}
+
+.guide-rules-hdr {
+  padding: 8px 16px;
+  font-size: 12px; font-weight: 700; color: #5a6480;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.guide-rules { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* -------- Rule card -------- */
+.rule-card {
+  border: 1px solid #d0d8ea;
+  border-radius: 7px;
+  overflow: hidden;
+  background: #f9fafd;
+}
+
+.rule-card-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 7px 12px;
+  background: #edf0f8; border-bottom: 1px solid #d8dff0;
+}
+.rule-num { font-weight: 700; font-size: 12px; color: #334060; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.rule-act-badge {
+  font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.act-allow { background: #d4f5e5; color: #1a6b44; }
+.act-deny  { background: #fde8e8; color: #901a1a; }
+.act-other { background: #e8edfa; color: #2a4080; }
+
+.rule-sections {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0;
+}
+@media (max-width: 900px) {
+  .rule-sections { grid-template-columns: 1fr; }
+}
+
+.rule-section {
+  padding: 10px 12px;
+  border-right: 1px solid #dde3ef;
+}
+.rule-section:last-child { border-right: none; }
+.rule-section-misc { background: #f4f7fc; }
+
+.rule-section-lbl {
+  font-size: 10px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #8b97b3; margin-bottom: 8px;
+}
+
+.rule-field { margin-bottom: 6px; }
+.rule-field:last-child { margin-bottom: 0; }
+.rule-label {
+  display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: #7b87a8; margin-bottom: 2px;
+}
+.rule-value { font-size: 12px; color: #1a2038; }
+.rule-ref {
+  font-family: var(--mono); font-size: 12px;
+  background: #fff; border: 1px solid #ccd3e3;
+  border-radius: 4px; padding: 2px 6px; display: inline-block;
+  color: #2a3a6a; font-weight: 600;
+}
+
+
