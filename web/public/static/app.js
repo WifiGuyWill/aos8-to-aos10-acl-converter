@@ -217,64 +217,85 @@ function renderNamedDestinations(data) {
       ? `<pre class="block">${esc(JSON.stringify({ named_destinations: objs }, null, 2))}</pre>`
       : "";
   }
-  // Side-by-side / text mode: a rich card per netdestination.
+  // Side-by-side / text mode: render each netdestination as a Central "Create an Alias" preview.
   const cards = data.netdestinations.map((nd) => {
-    // Entry counts summary line.
-    const countParts = [];
-    if (nd.fqdns.length)    countParts.push(`${nd.fqdns.length} FQDN${nd.fqdns.length !== 1 ? "s" : ""}`);
-    if (nd.hosts.length)    countParts.push(`${nd.hosts.length} host${nd.hosts.length !== 1 ? "s" : ""}`);
-    if (nd.networks.length) countParts.push(`${nd.networks.length} network${nd.networks.length !== 1 ? "s" : ""}`);
-    const summary = countParts.join(" · ") || "empty";
-
-    // Pills: address family, entry count, warnings.
-    const afLabel = nd.mixed_af ? "IPv4 + IPv6 (mixed!)" : (nd.is_ipv6 ? "IPv6" : "IPv4");
-    const afPillCls = nd.mixed_af ? "err" : "role";
-    const pills = [
-      `<span class="pill">named-destination</span>`,
-      `<span class="pill ${afPillCls}">${afLabel}</span>`,
-      `<span class="pill">${esc(summary)}</span>`,
-      `<span class="pill warn">create in Central first</span>`,
-    ];
     if (nd.mixed_af) {
-      pills.push(`<span class="pill err">split required → ${esc(nd.name)}-v4 / ${esc(nd.name)}-v6</span>`);
+      // Mixed AF: show two alias previews side by side with a split warning.
+      const v4Hosts    = nd.hosts.filter((h) => !h.includes(":"));
+      const v6Hosts    = nd.hosts.filter((h) =>  h.includes(":"));
+      const v4Networks = nd.networks.filter((n) => !n.includes(":"));
+      const v6Networks = nd.networks.filter((n) =>  n.includes(":"));
+      return `<div class="result-policy">
+        <h3>${esc(nd.name)} <span class="pill err">⚠ mixed IPv4 + IPv6 — split required</span>
+          <span class="pill warn">create in Central first</span></h3>
+        <ul class="issues">
+          <li class="err">Central Alias/named-destination objects are <strong>single address-family</strong> (IPv4 <em>or</em> IPv6 — not both).
+            Split this netdestination into two aliases and update any policy rules that reference
+            <code>alias:${esc(nd.name)}</code> to use the split names.</li>
+        </ul>
+        <div class="nd-split">
+          ${renderAliasPreview(nd.name + "-v4", "IPv4", nd.fqdns, v4Hosts, v4Networks)}
+          ${renderAliasPreview(nd.name + "-v6", "IPv6", [],      v6Hosts, v6Networks)}
+        </div>
+      </div>`;
     }
 
-    // Side-by-side rows: AOS8 keyword → AOS10 keyword.
-    const entries = [];
-    for (const f of nd.fqdns) {
-      entries.push(`<tr><td class="aos8">name ${esc(f)}</td><td class="arrow">→</td><td class="aos10">fqdn ${esc(f)}</td></tr>`);
-    }
-    for (const h of nd.hosts) {
-      const isV6 = h.includes(":");
-      const destName = nd.mixed_af ? esc(nd.name) + (isV6 ? "-v6" : "-v4") : esc(nd.name);
-      entries.push(`<tr><td class="aos8">host ${esc(h)}</td><td class="arrow">→</td><td class="aos10">host ${esc(h)}<span class="note"> (in ${destName})</span></td></tr>`);
-    }
-    for (const n of nd.networks) {
-      const isV6 = n.includes(":");
-      const destName = nd.mixed_af ? esc(nd.name) + (isV6 ? "-v6" : "-v4") : esc(nd.name);
-      entries.push(`<tr><td class="aos8">network ${esc(n)}</td><td class="arrow">→</td><td class="aos10">network ${esc(n)}<span class="note"> (in ${destName})</span></td></tr>`);
-    }
-
-    const table = entries.length
-      ? `<table class="sxs">
-           <thead><tr><th>AOS 8 (netdestination)</th><th></th><th>AOS 10 (named-destination)</th></tr></thead>
-           <tbody>${entries.join("")}</tbody>
-         </table>`
-      : `<p class="muted" style="padding:8px 12px">No entries (header only)</p>`;
-
-    const mixedWarning = nd.mixed_af
-      ? `<ul class="issues"><li class="err">Central named-destinations are single address-family (IPv4 OR IPv6).
-           This block has both — split into <strong>${esc(nd.name)}-v4</strong> and <strong>${esc(nd.name)}-v6</strong>
-           and update any policy rules that reference <code>alias:${esc(nd.name)}</code>.</li></ul>`
-      : "";
-
+    const af = nd.is_ipv6 ? "IPv6" : "IPv4";
     return `<div class="result-policy">
-      <h3>${esc(nd.name)} ${pills.join(" ")}</h3>
-      ${table}
-      ${mixedWarning}
+      <h3>${esc(nd.name)} <span class="pill role">${af}</span>
+        <span class="pill">${nd.entry_count} entr${nd.entry_count !== 1 ? "ies" : "y"}</span>
+        <span class="pill warn">create in Central first</span></h3>
+      ${renderAliasPreview(nd.name, af, nd.fqdns, nd.hosts, nd.networks)}
     </div>`;
   });
   return cards.join("\n");
+}
+
+/* Render a single "Create an Alias" Central GUI preview panel. */
+function renderAliasPreview(name, af, fqdns, hosts, networks) {
+  const afDot = (label) =>
+    `<span class="af-radio ${label === af ? "af-selected" : ""}">${label}</span>`;
+
+  const entryRows = [];
+  for (const f of fqdns) {
+    entryRows.push(`<tr><td class="nd-type">Domain Name</td><td class="nd-cond">${esc(f)}</td></tr>`);
+  }
+  for (const h of hosts) {
+    entryRows.push(`<tr><td class="nd-type">Host IP</td><td class="nd-cond">${esc(h)}</td></tr>`);
+  }
+  for (const n of networks) {
+    const [ip, mask] = n.split(" ");
+    entryRows.push(`<tr><td class="nd-type">Network</td><td class="nd-cond">${esc(ip)} &nbsp;<span class="muted">${esc(mask || "")}</span></td></tr>`);
+  }
+
+  const entriesTable = entryRows.length
+    ? `<table class="nd-entries">
+        <thead><tr><th>Type</th><th>Condition</th></tr></thead>
+        <tbody>${entryRows.join("")}</tbody>
+       </table>`
+    : `<p class="muted nd-empty">No entries</p>`;
+
+  return `<div class="alias-preview">
+    <div class="alias-field">
+      <label class="alias-label">Name</label>
+      <div class="alias-value name">${esc(name)}</div>
+    </div>
+    <div class="alias-field-row">
+      <div class="alias-field">
+        <label class="alias-label">Type</label>
+        <div class="alias-value">Network Destination</div>
+      </div>
+      <div class="alias-field">
+        <label class="alias-label">Destination Type</label>
+        <div class="alias-af">${afDot("IPv4")} ${afDot("IPv6")}</div>
+      </div>
+    </div>
+    <div class="alias-entries-hdr">
+      <span class="alias-label">Entries</span>
+      <span class="muted small">${entryRows.length} item${entryRows.length !== 1 ? "s" : ""}</span>
+    </div>
+    ${entriesTable}
+  </div>`;
 }
 
 function renderReport(data) {
