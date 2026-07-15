@@ -294,6 +294,60 @@ examples/
 └── bridge_mode.cfg   # bridge-mode enforcement differences
 tests/
 └── test_converter.py # unit tests (unittest / pytest compatible)
+web/                   # browser frontend (Cloudflare static assets + Pyodide)
+├── public/            # served assets (index.html, static/, py/, examples/)
+├── build.sh           # syncs the engine into public/py (single source of truth)
+├── wrangler.jsonc     # assets-only Worker config
+└── package.json       # npm run dev / deploy
+```
+
+---
+
+## Web app (browser, no install)
+
+The same engine also runs **entirely in the browser** — no backend, no upload.
+The frontend loads [Pyodide](https://pyodide.org) (WASM Python) and calls the
+*exact* `aos8_acl_converter` package the CLI uses, so the two can never diverge.
+**Your configuration never leaves your device.**
+
+```
+web/public/index.html   ──loads──▶  Pyodide (CDN)  ──runs──▶  aos8_acl_converter engine
+        static/app.js   mounts the engine files into the in-browser Python FS
+        py/web_adapter.py returns one JSON payload the UI renders (side-by-side / config / JSON + report)
+```
+
+### Preview locally
+
+```bash
+cd web
+npm install                # wrangler (+ dev-only pyodide/puppeteer for tests)
+npm run dev                # runs build.sh, then `wrangler dev`
+# open http://127.0.0.1:8788
+```
+
+`npm run build` (invoked by `dev`/`deploy`) copies the engine from
+`aos8_acl_converter/` into `web/public/py/` and stages the example configs, so
+the browser always runs the current logic.
+
+### Deploy to Cloudflare
+
+Assets-only Worker — no server code to maintain:
+
+```bash
+cd web
+npx wrangler login         # one-time
+npm run deploy             # build.sh + `wrangler deploy`
+```
+
+Wrangler prints the deployed URL (e.g. `https://aos8-to-aos10-acl-converter.<subdomain>.workers.dev`).
+Add a custom domain in the Cloudflare dashboard if desired. Static assets are
+served free/globally; Pyodide fetches its own WASM/stdlib from the jsDelivr CDN.
+
+### Dev checks (optional)
+
+```bash
+node verify_pyodide.mjs    # runs the engine under real WASM (no browser)
+node e2e_browser.mjs       # headless-Chromium end-to-end (dev server must be up)
 ```
 
 ---

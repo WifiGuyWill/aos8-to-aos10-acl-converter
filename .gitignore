@@ -28,3 +28,9 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# Node / Cloudflare (web frontend)
+node_modules/
+.wrangler/
+web/py/__pycache__/
+web/public/py/**/__pycache__/

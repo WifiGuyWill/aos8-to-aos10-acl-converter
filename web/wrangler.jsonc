@@ -1,0 +1,13 @@
+{
+  // Assets-only Worker: Cloudflare serves the static files in ./public directly.
+  // No server-side script is needed — the AOS 8 -> AOS 10 engine runs in the
+  // browser via Pyodide (WASM Python), so configs never leave the user's device.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "aos8-to-aos10-acl-converter",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    "directory": "./public",
+    // Single-page-ish: unknown paths fall back to index.html.
+    "not_found_handling": "single-page-application"
+  }
+}

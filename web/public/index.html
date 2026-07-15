@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AOS 8 &rarr; AOS 10 ACL Converter</title>
+  <meta name="description"
+        content="Convert &amp; validate Aruba AOS 8 session ACLs / user-roles into AOS 10 (Central) security policies. Runs entirely in your browser." />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>AOS&nbsp;8 <span class="arrow">&rarr;</span> AOS&nbsp;10 ACL Converter</h1>
+      <p class="tagline">
+        Convert &amp; validate Aruba AOS&nbsp;8 session ACLs and user-roles into
+        AOS&nbsp;10 (Aruba&nbsp;Central) security policies.
+      </p>
+      <p class="privacy" title="No config data is uploaded or logged.">
+        🔒 Runs entirely in your browser &mdash; your configuration never leaves this device.
+      </p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel input-panel">
+      <div class="panel-head">
+        <h2>AOS 8 configuration</h2>
+        <div class="input-actions">
+          <button id="btn-sample" type="button" class="link-btn">Load sample</button>
+          <button id="btn-bridge-sample" type="button" class="link-btn">Load bridge-mode sample</button>
+          <label class="file-btn">
+            Upload file
+            <input id="file-input" type="file" accept=".cfg,.txt,.conf,text/plain" hidden />
+          </label>
+          <button id="btn-clear" type="button" class="link-btn">Clear</button>
+        </div>
+      </div>
+      <textarea id="config-input" spellcheck="false" autocomplete="off"
+        placeholder="Paste `show running-config` output, or just the `ip access-list session` / `user-role` blocks…"></textarea>
+
+      <div class="controls">
+        <div class="control-group">
+          <span class="control-label">Output</span>
+          <div class="segmented" id="output-mode" role="tablist">
+            <button data-mode="text" class="active" role="tab">Side-by-side</button>
+            <button data-mode="config" role="tab">Config</button>
+            <button data-mode="json" role="tab">JSON</button>
+          </div>
+        </div>
+        <div class="control-group toggles">
+          <label class="toggle" title="Highlight rules whose enforcement differs on a bridged AP.">
+            <input type="checkbox" id="opt-bridge" /> Bridge-mode analysis
+          </label>
+          <label class="toggle" title="Show the statistics / issue report.">
+            <input type="checkbox" id="opt-report" checked /> Report
+          </label>
+        </div>
+        <button id="btn-convert" type="button" class="primary" disabled>
+          <span id="convert-label">Loading engine…</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="panel output-panel">
+      <div class="panel-head">
+        <h2>AOS 10 / Aruba Central</h2>
+        <div class="output-actions">
+          <span id="status-badge" class="badge badge-idle">Idle</span>
+          <button id="btn-copy" type="button" class="link-btn" disabled>Copy</button>
+          <button id="btn-download" type="button" class="link-btn" disabled>Download</button>
+        </div>
+      </div>
+      <div id="output" class="output" aria-live="polite">
+        <div class="placeholder">
+          <p>Results will appear here.</p>
+          <p class="muted">Load the sample and hit <strong>Convert</strong> to try it.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer wrap">
+    <p>
+      Powered by the <code>aos8_acl_converter</code> engine running in
+      <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a> (WASM Python).
+      &nbsp;·&nbsp;
+      <a id="repo-link" href="https://github.com/WifiGuyWill/aos8-to-aos10-acl-converter"
+         target="_blank" rel="noopener">Source on GitHub</a>
+    </p>
+    <p class="muted small">
+      Translation is fail-closed: any unmapped AOS 8 action becomes <code>deny</code> and the
+      policy is flagged for review — never silently permitted. Always validate generated
+      policies before production rollout.
+    </p>
+  </footer>
+
+  <!-- Pyodide runtime (loads its own WASM/stdlib from the jsDelivr CDN) -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

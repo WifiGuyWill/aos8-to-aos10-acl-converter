@@ -1,0 +1,19 @@
+{
+  "name": "aos8-to-aos10-acl-converter-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Browser frontend (Pyodide + Cloudflare static assets) for the AOS 8 -> AOS 10 ACL converter.",
+  "scripts": {
+    "build": "bash build.sh",
+    "dev": "npm run build && wrangler dev",
+    "start": "wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  },
+  "dependencies": {
+    "puppeteer": "^25.3.0",
+    "pyodide": "^0.26.2"
+  }
+}
